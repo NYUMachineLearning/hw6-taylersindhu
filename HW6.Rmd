@@ -49,7 +49,6 @@ train_pos <- sample(seq_len(nrow(BreastCancer_num)), size = train_size)
 
 train_classification <- BreastCancer_num[train_pos, ]
 test_classification <- BreastCancer_num[-train_pos, ]
-
 ```
 
 ##SVM 
@@ -106,5 +105,155 @@ confusionMatrix(svm_test, reference = test_classification$Class)
 ##Homework
 
 1. Choose an appropriate machine learning dataset and use SVM with two different kernels. Campare the results. 
+```{r setting up}
+# Load data
+data("PimaIndiansDiabetes2")
+
+# Examining Data 
+summary(PimaIndiansDiabetes2)
+str(PimaIndiansDiabetes2)
+#head(PimaIndiansDiabetes2)
+
+# Remove Na values
+pima <- na.omit(PimaIndiansDiabetes2)
+
+# set seed for reproducibility
+set.seed(10)
+
+# Divide into training and test sets
+train_size_pima <- floor(0.75 * nrow(pima))
+train_pos_pima <- sample(seq_len(nrow(pima)), size = train_size_pima)
+
+train_classification_pima <- pima[train_pos_pima, ]
+test_classification_pima <- pima[-train_pos_pima, ]
+
+# Create cross validation folds using training data to compare models 
+
+# Recommendation source: https://stats.stackexchange.com/questions/10551/how-do-i-choose-what-svm-kernels-to-use
+
+
+folds <- createMultiFolds(train_classification_pima$diabetes)
+```
+
+```{r Question 1: linear kernel}
+# Linear Kernal
+# Train model
+set.seed(10)
+
+ctrl <- trainControl(method = "repeatedcv", classProbs = T, savePredictions = T, index=folds)
+
+# possible tuning parameteres include cost
+svm_linear <- train(diabetes ~ ., data = train_classification_pima, method = "svmLinear2", trControl = ctrl, tuneLength=5)
+
+svm_linear
+names(svm_linear)
+
+svm_linear$pred
+
+# ROC Curve
+roc_linear <- roc(predictor = svm_linear$pred$pos, response = svm_linear$pred$obs)
+
+# AUC
+roc_linear$auc
+
+# Visualing ROC Curve
+plot(x = roc_linear$specificities, y= roc_linear$sensitivities, xlim = c(1,0), ylim=c(0,1), type="l", ylab = "Sensitivity", xlab="Specificity", col = "orange") 
+abline(a=1, b=-1)
+
+# Predict on test set 
+svm_test_linear <- predict(svm_linear, newdata = test_classification_pima)
+
+# Confusion Matrix
+confusionMatrix(svm_test_linear, test_classification_pima$diabetes, positive = "pos")
+```
+
+```{r}
+# Exponential Radial Basis Function Kernal
+# Train model
+set.seed(10)
+
+ctrl <- trainControl(method = "cv", classProbs = T, savePredictions = T, index=folds)
+
+# possible tuning parameteres include cost
+svm_exp <- train(diabetes ~ ., data = train_classification_pima, method = "svmRadialCost", trControl = ctrl, tuneLength=5)
+
+svm_exp
+names(svm_exp)
+
+svm_exp$pred
+
+# ROC Curve
+roc_exp <- roc(predictor = svm_exp$pred$pos, response = svm_exp$pred$obs)
+
+# AUC
+roc_exp$auc
+
+# Visualing ROC Curve
+plot(x = roc_exp$specificities, y= roc_exp$sensitivities, xlim = c(1,0), ylim=c(0,1), type="l", ylab = "Sensitivity", xlab="Specificity", col = "orange") 
+abline(a=1, b=-1)
+
+# Predict on test set 
+svm_test_exp <- predict(svm_exp, newdata = test_classification_pima)
+
+# Confusion Matrix
+confusionMatrix(svm_test_exp, test_classification_pima$diabetes, positive = "pos")
+```
+
+**Question 1: Comparison**
+The model featuring a support vector machine model with a linear kernel performed slightly better overall than the model with the radial basis function kernel. The area under the curve using the linear kernal  was 0.832, which was only a marginal improvement over the radial basis function kernel, which resulted in an AUC of 0.826. In terms of accuracy, the linear kernel (at 0.800, 95% confidence interval 0.703 to 0.870) was similar to the radial basis function kernel (at 0.745, 95% confidence interval 0.647 to 0.828). The linear kernal wasd more sensitive (0.563 vs. 0.438) and specific (0.909 vs. 0.894).
 
 2. Attempt using SVM after using a previously covered feature selection method. Do the results improve? Explain. 
+```{r Question 2: recursive feature elimination, warning=FALSE}
+# Attempted SBF, but all nine variables were selected
+#sbf_ctrl <- sbfControl(functions = caretSBF, method = "cv")
+
+#results_sbf <- sbf(diabetes ~ ., data = train_classification_pima, sbfControl = sbf_ctrl)
+
+#results_sbf$variables
+
+# Recursive Feature Elimination
+
+# Control
+set.seed(10123)
+rfe_control <- rfeControl(functions = caretFuncs, number = 2)
+
+# RFE
+rfe_selection <- rfe(diabetes ~ ., data = train_classification_pima, rfeControl = control, sizes=c(1:8))
+
+# Variable Selection
+rfe_selection
+
+rfe_selection$variables
+rfe_selection$optVariables
+
+# Rerun linear kernal with 5 selected variables
+
+# Linear Kernal
+# Train model
+
+ctrl <- trainControl(method = "repeatedcv", classProbs = T, savePredictions = T, index=folds)
+
+svm_selected <- train(diabetes ~ glucose + age + insulin + mass + pedigree, data = train_classification_pima, method = "svmLinear2", trControl = ctrl, tuneLength=5)
+
+svm_selected
+names(svm_selected)
+
+svm_selected$pred
+
+# ROC Curve
+roc_selected <- roc(predictor = svm_selected$pred$pos, response = svm_selected$pred$obs)
+
+# AUC
+roc_selected$auc
+
+# Visualing ROC Curve
+plot(x = roc_selected$specificities, y= roc_selected$sensitivities, xlim = c(1,0), ylim=c(0,1), type="l", ylab = "Sensitivity", xlab="Specificity", col = "orange") 
+abline(a=1, b=-1)
+
+# Predict on test set 
+svm_test_selected <- predict(svm_selected, newdata = test_classification_pima)
+
+# Confusion Matrix
+confusionMatrix(svm_test_selected, test_classification_pima$diabetes, positive = "pos")
+```
+Feature selection with recursive feature elimination resulted in 5 variables, ("glucose", "insulin", "pedigree", "age", and "mass"). Rerunning the model using support vector machine with a linear kernel using these selected features represented a slight improvement. It resulted in a slightly higher area under the curve of 0.840, compared to 0.832 with the full set of features. Accuracy was not significantly different between the reduced set of features (0.826 ,95% confidence interval 0.723 to 0.887) and the full set (0.745 .95% confidence interval 0.647 to 0.828). This large confidence interval is likely due to the small number of patients in the test set (98 patients). Sensitivity improved from 0.438 to 0.625 with feature selection, due to a reduction in the number of false positives, and specificity stayed the same at 0.910.
